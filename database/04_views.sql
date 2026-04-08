@@ -103,6 +103,9 @@ ORDER BY days_idle DESC;
 -- ============================================================
 -- 4. ALLOCATION REPORT VIEW
 -- ============================================================
+-- FIX: alloc_status now returns 'IDLE' for active licenses that have
+-- not been used in more than 30 days (mirrors idle_license_view logic),
+-- ensuring the Licenses page filter is consistent with Dashboard counts.
 CREATE OR REPLACE VIEW allocation_report_view AS
 SELECT 
     la.alloc_id,
@@ -122,7 +125,15 @@ SELECT
     sp.price_per_seat AS monthly_cost,
     la.assigned_date,
     la.last_used_date,
-    la.alloc_status,
+    -- Compute effective status: IDLE overrides ACTIVE when idle > 30 days
+    CASE
+        WHEN la.alloc_status = 'ACTIVE' AND (
+            (la.last_used_date IS NULL     AND CURRENT_DATE - la.assigned_date  > 30)
+            OR
+            (la.last_used_date IS NOT NULL AND CURRENT_DATE - la.last_used_date > 30)
+        ) THEN 'IDLE'
+        ELSE la.alloc_status
+    END AS alloc_status,
     CASE 
         WHEN la.last_used_date IS NULL THEN CURRENT_DATE - la.assigned_date
         ELSE CURRENT_DATE - la.last_used_date
